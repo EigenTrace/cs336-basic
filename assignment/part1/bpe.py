@@ -4,6 +4,19 @@ from multiprocessing import Pool
 from collections import Counter, defaultdict
 import regex as re
 
+import heapq
+
+class HeapItem:
+    def __init__(self,count,pair):
+        self.count=count
+        self.pair=pair
+    def __lt__(self,other):
+
+        if self.count != other.count:
+            return self.count > other.count
+        else:
+            return self.pair > other.pair 
+
 PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
 _PAT = re.compile(PAT)
 
@@ -49,14 +62,25 @@ def merge(
             pair_count[pair] += byte_count[w]
             index[pair].add(len(word) - 1)
 
+
+    heap=[HeapItem(c,p) for p,c in pair_count.items()]
+
+    heapq.heapify(heap)
     while len(dic) < size:
-        if not pair_count:
-            break
-        best = max(pair_count, key=lambda p: (pair_count[p], p))
+
+        best=None
+        while heap:
+            
+            it=heapq.heappop(heap)
+            if it.count == pair_count[it.pair]:
+                best=it.pair
+                break
+        if best is None:  
+            break 
         num = pair_count[best]
         dic[len(dic)] = best[0] + best[1]
         process.append(best)
-
+        change_item=set()
         for wid in list(index[best]):
             w = word[wid]
             f = frq[wid]
@@ -77,15 +101,21 @@ def merge(
 
             new_pair = Counter(zip(new_word, new_word[1:]))
 
+            
             for p, c in (new_pair - old_pair).items():
                 pair_count[p] += f * c
                 index[p].add(wid)
+                change_item.add(p)
             for p, c in (old_pair - new_pair).items():
                 pair_count[p] -= f * c
+                change_item.add(p)
                 if pair_count[p] == 0:
                     del pair_count[p]
                 if new_pair[p] == 0:
                     index[p].discard(wid)
+        for p in change_item:
+            if p in pair_count:
+                heapq.heappush(heap,HeapItem(pair_count[p],p))
         del pair_count[best]
         del index[best]
     return dic, process
@@ -96,12 +126,13 @@ def train_bpe(
 ) -> tuple[dict[int, bytes], list[tuple[bytes, bytes]]]:
     num_processes = os.cpu_count()
     with open(input_path, "rb") as f:
-        boundaries = find_chunk_boundaries(f, num_processes, b"<|endoftext|>")
+        boundaries = find_chunk_boundaries(f, num_processes*16, b"<|endoftext|>")
 
     delimit = [
         (start, end, input_path, special_tokens)
         for start, end in zip(boundaries[:-1], boundaries[1:])
     ]
+    print("complete")
     byte_count = Counter()
     with Pool(num_processes) as pool:
         for dic in pool.imap_unordered(count, delimit):
