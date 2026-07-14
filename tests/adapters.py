@@ -6,7 +6,7 @@ from typing import IO, Any, BinaryIO
 
 import numpy.typing as npt
 import torch
-from jaxtyping import Bool, Float, Int
+from assignment.part2.all import *
 from torch import Tensor
 from assignment.part1 import bpe
 from assignment.part1.tokenizer import Tokenizer
@@ -18,6 +18,7 @@ from assignment.part2.embedding import Embedding
 from assignment.part2.rmsnorm import Rmsnorm
 from assignment.part2.positionwise_feedforward import Pffn
 from assignment.part2.rope import Rope
+from assignment.part2.softmax import Softmax
 
 def run_linear(
     d_in: int,
@@ -119,7 +120,7 @@ def run_scaled_dot_product_attention(
     Returns:
         Float[Tensor, " ... queries d_v"]: Output of SDPA
     """
-    raise NotImplementedError
+    return scaled_dot_product_attention(Q,K,V,mask)
 
 
 def run_multihead_self_attention(
@@ -153,7 +154,13 @@ def run_multihead_self_attention(
         Float[Tensor, " ... sequence_length d_model"]: Tensor with the output of running your optimized, batched multi-headed attention
         implementation with the given QKV projection weights and input features.
     """
-    raise NotImplementedError
+    mulhead=multihead_self_attention(d_model,num_heads)
+    mulhead.Wo.data=o_proj_weight
+    mulhead.Wq.data=q_proj_weight
+    mulhead.Wk.data=k_proj_weight
+    mulhead.Wv.data=v_proj_weight
+    return mulhead.forward(in_features)
+
 
 
 def run_multihead_self_attention_with_rope(
@@ -193,7 +200,12 @@ def run_multihead_self_attention_with_rope(
         Float[Tensor, " ... sequence_length d_model"]: Tensor with the output of running your optimized, batched multi-headed attention
         implementation with the given QKV projection weights and input features.
     """
-    raise NotImplementedError
+    mulhead=multihead_self_attention(d_model,num_heads,theta,max_seq_len)
+    mulhead.Wo.data=o_proj_weight
+    mulhead.Wq.data=q_proj_weight
+    mulhead.Wk.data=k_proj_weight
+    mulhead.Wv.data=v_proj_weight
+    return mulhead.forward(in_features,token_positions)
 
 
 def run_rope(
@@ -292,7 +304,17 @@ def run_transformer_block(
         Float[Tensor, "batch sequence_length d_model"] Tensor with the output of
         running the Transformer block on the input features while using RoPE.
     """
-    raise NotImplementedError
+    tblock=transformer_block(d_model,num_heads,d_ff,theta,max_seq_len)
+    tblock.norm1.g.data=weights['ln1.weight']
+    tblock.norm2.g.data=weights['ln2.weight']
+    tblock.mulatt.Wq.data=weights['attn.q_proj.weight']
+    tblock.mulatt.Wk.data=weights['attn.k_proj.weight']
+    tblock.mulatt.Wv.data=weights['attn.v_proj.weight']
+    tblock.mulatt.Wo.data=weights['attn.output_proj.weight']
+    tblock.pffn.w1.data=weights['ffn.w1.weight']
+    tblock.pffn.w2.data=weights['ffn.w2.weight']
+    tblock.pffn.w3.data=weights['ffn.w3.weight']
+    return tblock.forward(in_features)
 
 
 def run_transformer_lm(
@@ -452,7 +474,8 @@ def run_softmax(in_features: Float[Tensor, " ..."], dim: int) -> Float[Tensor, "
         Float[Tensor, "..."]: Tensor of with the same shape as `in_features` with the output of
         softmax normalizing the specified `dim`.
     """
-    raise NotImplementedError
+    s=Softmax()
+    return s(in_features,dim)
 
 
 def run_cross_entropy(
