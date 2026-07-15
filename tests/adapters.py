@@ -396,7 +396,30 @@ def run_transformer_lm(
         Float[Tensor, "batch_size sequence_length vocab_size"]: Tensor with the predicted unnormalized
         next-word distribution for each token.
     """
-    raise NotImplementedError
+    
+
+    model = transformer_lm(vocab_size, context_length, d_model,
+                           num_layers, num_heads, d_ff, rope_theta)
+
+    # embedding + final norm + lm head
+    model.embedding.vector.data = weights["token_embeddings.weight"]
+    model.norm.g.data           = weights["ln_final.weight"]
+    model.linear.W.data         = weights["lm_head.weight"]
+
+    # per-layer weights
+    for i in range(num_layers):
+        blk = model.attns[i]
+        blk.mulatt.Wq.data = weights[f"layers.{i}.attn.q_proj.weight"]
+        blk.mulatt.Wk.data = weights[f"layers.{i}.attn.k_proj.weight"]
+        blk.mulatt.Wv.data = weights[f"layers.{i}.attn.v_proj.weight"]
+        blk.mulatt.Wo.data = weights[f"layers.{i}.attn.output_proj.weight"]
+        blk.norm1.g.data   = weights[f"layers.{i}.ln1.weight"]
+        blk.pffn.w1.data   = weights[f"layers.{i}.ffn.w1.weight"]
+        blk.pffn.w2.data   = weights[f"layers.{i}.ffn.w2.weight"]
+        blk.pffn.w3.data   = weights[f"layers.{i}.ffn.w3.weight"]
+        blk.norm2.g.data   = weights[f"layers.{i}.ln2.weight"]
+
+    return model(in_indices)
 
 
 def run_rmsnorm(

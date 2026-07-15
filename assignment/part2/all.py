@@ -10,6 +10,9 @@ from torch import Tensor
 from .rope import Rope
 from .rmsnorm import Rmsnorm
 from .positionwise_feedforward import Pffn
+from .embedding import Embedding
+from .linear import Linear
+
 
 def scaled_dot_product_attention(
     Q: Float[Tensor, " ... queries d_k"],
@@ -97,17 +100,50 @@ class transformer_block(nn.Module):
         super().__init__()
         self.norm1 = Rmsnorm(d_model)
         self.mulatt = multihead_self_attention(d_model, num_heads, theta, max_seq_len)
-        self.norm2=  Rmsnorm(d_model)
-        self.pffn=Pffn(d_model,d_ff)
-        
+        self.norm2 = Rmsnorm(d_model)
+        self.pffn = Pffn(d_model, d_ff)
 
-    def forward(self,in_features: Float[Tensor, " batch sequence_length d_model"])->Float[Tensor, " batch sequence_length d_model"]:
-        x=self.norm1(in_features)
-        position=torch.arange(in_features.shape[-2])
-        x1=self.mulatt.forward(x,position)
-        x2=x1+in_features
-        x3=self.norm2(x2)
-        x4=self.pffn.forward(x3)
-        return x4+x2
-    
-def 
+    def forward(
+        self, in_features: Float[Tensor, " batch sequence_length d_model"]
+    ) -> Float[Tensor, " batch sequence_length d_model"]:
+        x = self.norm1(in_features)
+        position = torch.arange(in_features.shape[-2])
+        x1 = self.mulatt.forward(x, position)
+        x2 = x1 + in_features
+        x3 = self.norm2(x2)
+        x4 = self.pffn.forward(x3)
+        return x4 + x2
+
+
+class transformer_lm(nn.Module):
+    def __init__(
+        self,
+        vocab_size: int,
+        context_length: int,
+        d_model: int,
+        num_layers: int,
+        num_heads: int,
+        d_ff: int,
+        rope_theta: float,
+    ) -> None:
+        super().__init__()
+        self.embedding = Embedding(vocab_size, d_model)
+        self.attns = nn.ModuleList(
+            [
+                transformer_block(d_model, num_heads, d_ff, rope_theta, context_length)
+                for _ in range(num_layers)
+            ]
+        )
+        self.norm = Rmsnorm(d_model)
+        self.linear = Linear(d_model, vocab_size)
+        self.softmax = Softmax()
+
+    def forward(
+        self, x: Int[Tensor, " batch_size sequence_length"]
+    ) -> Float[Tensor, " batch_size sequence_length vocab_size"]:
+        x = self.embedding(x)
+        for attn in self.attns:
+            x=attn(x)
+        x=self.norm(x)
+        x=self.linear(x)
+        return x
