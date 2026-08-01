@@ -6,6 +6,7 @@ data
 *.pkl
 # C extensions
 *.so
+*.pt
 
 # Distribution / packaging
 .Python
