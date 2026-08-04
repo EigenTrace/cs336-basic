@@ -15,7 +15,7 @@ from einops import einsum
 from jaxtyping import Bool, Float, Int
 import matplotlib.pyplot as plt
 from math import cos
-
+import time, json
 
 def cross_entropy(
     inputs: torch.Tensor, targets: Int[Tensor, " batch_size"]
@@ -202,21 +202,29 @@ def training_loop(
     eval_iters=100,
     log_interval=50,
     seed=0,
+    run_name:str="v1"
 ):
+    device = "mps" if torch.backends.mps.is_available() else "cpu"
     torch.manual_seed(seed)
     module = transformer_lm(
         vocab_size, context_length, d_model, num_layers, num_heads, d_ff, rope_theta
     ).to(device)
+
+    module = torch.compile(module, backend="aot_eager")   # mps
     adamw = AdamW(module.parameters(), lr_max, weight_decay, betas, eps)
     train_data = np.load(train_path, mmap_mode="r")
     valid_data = np.load(valid_path, mmap_mode="r")
+
+    checkpoint_path = f"ckpt_{run_name}.pt"      # right after the device line
 
     i=0
     if os.path.exists(checkpoint_path):
         i=load_checkpoint(checkpoint_path,module,adamw)
     
-
-    while i<total_steps:
+    
+    start = time.time()
+    history = []
+    while i<=total_steps:
         lr=lr_schedule(i,lr_max,lr_min,warmup_iters,cosine_cycle_iters)
         
         batch, result = get_batch(train_data, batch_size, context_length, device)
@@ -243,15 +251,23 @@ def training_loop(
                 for j in range(eval_iters):
                     sample,target=get_batch(valid_data,batch_size,context_length,device)
                     losses.append(cross_entropy(module(sample),target).item())
-                print(f"step:{i} loss:{sum(losses)/len(losses):.4f}")
+                avg_eval_loss=sum(losses)/len(losses)
+                print(f"eval step:{i} loss:{avg_eval_loss:.4f}")
+
+                history.append({"step": i, "wall_clock": time.time() - start,
+                "train_loss": loss.item(), "val_loss": avg_eval_loss, "lr": lr})
+                os.makedirs("logs", exist_ok=True)
+                with open(f"logs/{run_name}.json", "w") as f:
+                    json.dump(history, f)
             module.train()
 
 
         if i%log_interval==0:
-            print(f"step: {i} loss: {loss.item():.4f}  lr: {lr:.2e}")
+            print(f"train step: {i} loss: {loss.item():.4f}  lr: {lr:.2e}")
 
         i+=1
     save_checkpoint(module, adamw, i, checkpoint_path)
+
 @torch.no_grad()
 def Decoding(module:nn.Module,prompt:torch.Tensor,max_len:int,tem:float,p:float, stop_id:int|None=None):
     module.eval()

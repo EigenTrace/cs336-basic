@@ -70,15 +70,12 @@ class multihead_self_attention(nn.Module):
         K = rearrange(K, "... seq (h dk)-> ... seq h dk", dk=self.dk)
         V = rearrange(V, "... seq (h dk)-> ... seq h dk", dk=self.dk)
 
-        mask = torch.tril(torch.ones(Q.shape[-3], Q.shape[-3], dtype=torch.bool))
+        mask = torch.tril(torch.ones(Q.shape[-3], Q.shape[-3], dtype=torch.bool,device=Q.device))
         outs = []
         for i in range(self.num):
-            print("Q type")
-            print(Q.shape)
-            print("qi")
+           
 
             qi, ki, vi = Q[:, :, i], K[:, :, i], V[:, :, i]
-            print(qi.shape)
             if self.rope:
                 qi = self.rope.forward(qi, token_positions)
                 ki = self.rope.forward(ki, token_positions)
