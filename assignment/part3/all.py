@@ -269,10 +269,10 @@ def training_loop(
     save_checkpoint(module, adamw, i, checkpoint_path)
 
 @torch.no_grad()
-def Decoding(module:nn.Module,prompt:torch.Tensor,max_len:int,tem:float,p:float, stop_id:int|None=None):
+def Decoding(module:nn.Module,prompt:torch.Tensor,max_len:int,tem:float,p:float, stop_id:int|None=None,context_length=256):
     module.eval()
     for i in range(max_len):
-        logits=module(prompt)[:,-1,:]
+        logits=module(prompt[:, -context_length:])[:,-1,:]
         logits=logits/tem
         softmax=Softmax()
         probs=softmax(logits,dim=-1)
